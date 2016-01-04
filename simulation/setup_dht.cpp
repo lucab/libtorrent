@@ -96,13 +96,29 @@ struct dht_node final : lt::dht::udp_socket_interface
 			, m_ep, boost::bind(&dht_node::on_read, this, _1, _2));
 	}
 
-	dht_node(dht_node&& n)
+	// This type is not copyable, because the socket and the dht node is not
+	// copyable.
+	dht_node(dht_node const&) = delete;
+	dht_node& operator=(dht_node const&) = delete;
+
+	// it's also not movable, because it passes in its this-pointer to the async
+	// receive function, which pins this object down. However, std::vector cannot
+	// hold non-movable and non-copyable types. Instead, pretend that it's
+	// movable and make sure it never needs to be moved (for instance, by
+	// reserving space in the vector before emplacing any nodes).
+	dht_node(dht_node&& n) noexcept
 		: m_socket(std::move(n.m_socket))
 		, m_dht(this, n.m_dht.settings(), n.m_dht.nid()
 			, n.m_dht.observer(), n.m_dht.stats_counters())
-	{ throw std::runtime_error("dht_node is not movable"); }
-
-	dht_node& operator=(dht_node&&) { throw std::runtime_error("dht_node is not movable"); }
+	{
+		assert(false && "dht_node is not movable");
+		throw std::runtime_error("dht_node is not movable");
+	}
+	dht_node& operator=(dht_node&&) noexcept
+	{
+		assert(false && "dht_node is not movable");
+		throw std::runtime_error("dht_node is not movable");
+	}
 
 	void on_read(lt::error_code const& ec, std::size_t bytes_transferred)
 	{
@@ -159,8 +175,8 @@ struct dht_node final : lt::dht::udp_socket_interface
 		dht::node_id id = m_dht.nid();
 
 		// the number of slots left per bucket
-		int nodes_per_bucket[160];
-		std::fill(std::begin(nodes_per_bucket), std::end(nodes_per_bucket), 8);
+		std::array<int, 160> nodes_per_bucket;
+		nodes_per_bucket.fill(8);
 
 		// when we use the larger routing table, the low buckets are larger
 		nodes_per_bucket[0] = 128;
